@@ -22,7 +22,7 @@ Frigate supports multiple different detectors that work on different types of ha
 **Most Hardware**
 
 - [Coral EdgeTPU](#edge-tpu-detector): The Google Coral EdgeTPU is available in USB, Mini PCIe, and m.2 formats allowing for a wide range of compatibility with devices.
-- [Hailo](#hailo): The Hailo-8, Hailo-8L and Hailo-8R AI Acceleration modules are available in m.2 format with a HAT for RPi devices, offering a wide range of compatibility with devices.
+- [Hailo](#hailo): The Hailo-8, Hailo-8L, Hailo-8R and Hailo-10H AI Acceleration modules are available in m.2 format with a HAT for RPi devices, offering a wide range of compatibility with devices.
 - <CommunityBadge /> [MemryX](#memryx-mx3): The MX3 Acceleration module is available in m.2 format, offering broad compatibility across various platforms.
 - <CommunityBadge /> [DEEPX](#deepx-npu): The DEEPX NPU is available in m.2 format and as a HAT+ for the Raspberry Pi 5, offering broad compatibility across various platforms.
 
@@ -298,7 +298,7 @@ models:
 
 ## Hailo
 
-This detector is available for use with the Hailo-8, Hailo-8L and Hailo-8R AI Acceleration Modules. The integration identifies which of them is attached and selects the matching default model if no custom model is specified.
+This detector is available for use with Hailo-8, Hailo-8L, Hailo-8R and Hailo-10H AI Acceleration Modules. The integration identifies which of them is attached and selects the matching default model if no custom model is specified.
 
 See the [installation docs](../frigate/installation.md#hailo-8) for information on configuring the Hailo hardware.
 

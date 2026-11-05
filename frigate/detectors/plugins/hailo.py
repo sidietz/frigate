@@ -59,6 +59,8 @@ H8_DEFAULT_MODEL = "yolov6n.hef"
 H8L_DEFAULT_MODEL = "yolov6n.hef"
 H8_DEFAULT_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.14.0/hailo8/yolov6n.hef"
 H8L_DEFAULT_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.14.0/hailo8l/yolov6n.hef"
+H10_DEFAULT_MODEL = "yolov6n.hef"
+H10_DEFAULT_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.15.0/hailo10h/yolov6n.hef"
 
 # HailoRT is installed at first start rather than shipped in the image. The
 # tarball carries libhailort and hailortcli, the wheel the python bindings.
@@ -118,7 +120,9 @@ def detect_hailo_arch():
             return None
         for line in result.stdout.split("\n"):
             if "Device Architecture" in line:
-                if "HAILO8L" in line:
+                if "HAILO10H" in line or "HAILO10" in line:
+                    return "hailo10h"
+                elif "HAILO8L" in line:
                     return "hailo8l"
                 elif "HAILO8" in line:
                     return "hailo8"
@@ -161,6 +165,8 @@ class HailoAsyncInference:
 
         params = VDevice.create_params()
         params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
+        if hasattr(params, "group_id"):
+            params.group_id = "SHARED"
 
         self.hef = HEF(hef_path)
         self.target = VDevice(params)
@@ -350,7 +356,9 @@ class HailoDetector(DetectionApi):
         elif url and url.endswith(".hef"):
             return os.path.basename(url)
         else:
-            if ARCH == "hailo8":
+            if ARCH == "hailo10h":
+                return H10_DEFAULT_MODEL
+            elif ARCH == "hailo8":
                 return H8_DEFAULT_MODEL
             else:
                 return H8L_DEFAULT_MODEL
@@ -376,7 +384,9 @@ class HailoDetector(DetectionApi):
                 return cached_model_path
             else:
                 logger.debug(f"Downloading default model: {model_name}")
-                if ARCH == "hailo8":
+                if ARCH == "hailo10h":
+                    self.download_model(H10_DEFAULT_URL, cached_model_path)
+                elif ARCH == "hailo8":
                     self.download_model(H8_DEFAULT_URL, cached_model_path)
                 else:
                     self.download_model(H8L_DEFAULT_URL, cached_model_path)
@@ -469,7 +479,7 @@ class HailoDetector(DetectionApi):
 
 # ----------------- HailoDetectorConfig Class ----------------- #
 class HailoDetectorConfig(BaseDetectorConfig):
-    """Hailo detector using HEF models and the HailoRT SDK for inference on Hailo hardware."""
+    """Hailo-8/Hailo-8L/Hailo-10H detector using HEF models and the HailoRT SDK for inference on Hailo hardware."""
 
     model_config = ConfigDict(
         title="Hailo",

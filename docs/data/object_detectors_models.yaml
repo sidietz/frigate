@@ -72,6 +72,7 @@ hailo:
             # The detector automatically selects the default model based on your hardware:
             # - For Hailo-8 hardware: YOLOv6n (default: yolov6n.hef)
             # - For Hailo-8L hardware: YOLOv6n (default: yolov6n.hef)
+            # - For Hailo-10H hardware: YOLOv6n (default: yolov6n.hef)
             #
             # Optionally, you can specify a local model path to override the default.
             # If a local path is provided and the file exists, it will be used instead of downloading.
