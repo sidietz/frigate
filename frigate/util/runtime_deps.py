@@ -189,6 +189,30 @@ def _fetch(artifact: Artifact, cache: Path) -> Path:
         logger.warning("Checksum mismatch for %s, downloading again", path)
         path.unlink()
 
+    # Check alternative user-provided package directories (e.g. mounted volumes)
+    search_dirs = [
+        d
+        for d in [
+            os.environ.get("HAILO_PACKAGES_DIR"),
+            os.environ.get("FRIGATE_PACKAGES_DIR"),
+            "/config/packages",
+            "/config/hailo",
+            "/wheels",
+            "/packages",
+        ]
+        if d and os.path.isdir(d)
+    ]
+    for sdir in search_dirs:
+        candidate = Path(sdir) / artifact.name
+        if candidate.is_file():
+            if sha256_of(candidate) == artifact.sha256:
+                logger.info("Found pre-seeded runtime file in %s, copying to %s", candidate, path)
+                cache.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(candidate, path)
+                return path
+            else:
+                logger.warning("Checksum mismatch for pre-seeded %s", candidate)
+
     # imported here so the detector API does not pull in the IPC stack
     from frigate.util.downloader import ModelDownloader
 
@@ -343,6 +367,32 @@ def _extract_archive(path: Path, artifact: Artifact) -> list[str]:
                             _write_member(dest, source, mode)
 
                     written.append(str(dest))
+    elif path.name.endswith(".deb"):
+        staging = Path(tempfile.mkdtemp(prefix="frigate-deb-"))
+        try:
+            result = subprocess.run(
+                ["dpkg-deb", "-x", str(path), str(staging)],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeDependencyError(
+                    f"dpkg-deb extraction of {path.name} failed: {result.stderr}"
+                )
+            for root, _, files in os.walk(staging):
+                for file_name in files:
+                    full_p = Path(root) / file_name
+                    rel_p = full_p.relative_to(staging).as_posix()
+                    for mapping, relative in _mappings_for(rel_p, mappings):
+                        dest = _safe_dest(_dest_root(mapping), relative)
+                        if full_p.is_symlink():
+                            _write_symlink(dest, os.readlink(full_p))
+                        else:
+                            with open(full_p, "rb") as source:
+                                _write_member(dest, source, full_p.stat().st_mode)
+                        written.append(str(dest))
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
     else:
         with tarfile.open(path, "r:*") as archive:
             for member in archive:
@@ -361,6 +411,19 @@ def _extract_archive(path: Path, artifact: Artifact) -> list[str]:
                             _write_member(dest, source, member.mode)
 
                     written.append(str(dest))
+
+    # For library mappings, ensure base .so symlink exists if a versioned .so was extracted
+    for mapping in mappings:
+        if mapping.dest is ArchiveDest.lib:
+            lib_dir = _dest_root(mapping)
+            for file_path in list(written):
+                p = Path(file_path)
+                if p.parent == lib_dir and ".so." in p.name:
+                    base_so_name = p.name.split(".so.")[0] + ".so"
+                    symlink_dest = lib_dir / base_so_name
+                    _write_symlink(symlink_dest, p.name)
+                    if str(symlink_dest) not in written:
+                        written.append(str(symlink_dest))
 
     if not written:
         raise RuntimeDependencyError(f"{path.name} contained no expected files")

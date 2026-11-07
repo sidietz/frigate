@@ -21,7 +21,10 @@ from frigate.util.runtime_deps import (
     ArchiveMapping,
     Artifact,
     ArtifactKind,
+    RuntimeDependencyError,
     RuntimeManifest,
+    activate,
+    ensure_installed,
     find_tool,
 )
 
@@ -107,6 +110,49 @@ HAILORT_MANIFEST = RuntimeManifest(
     import_check="hailo_platform",
 )
 
+HAILORT_10_VERSION = "5.4.0"
+HAILORT_10_RELEASE = (
+    f"https://github.com/frigate-nvr/hailort/releases/download/v{HAILORT_10_VERSION}"
+)
+HAILORT_10_MAPPINGS = (
+    ArchiveMapping("usr/lib/", ArchiveDest.lib, include=("libhailort.so*",)),
+    ArchiveMapping("usr/bin/", ArchiveDest.bin, include=("hailortcli",)),
+)
+HAILORT_10_MANIFEST = RuntimeManifest(
+    name=DETECTOR_KEY,
+    version=HAILORT_10_VERSION,
+    artifacts=(
+        Artifact(
+            url=f"{HAILORT_10_RELEASE}/hailort_{HAILORT_10_VERSION}_amd64.deb",
+            sha256="0000000000000000000000000000000000000000000000000000000000000000",
+            kind=ArtifactKind.archive,
+            mappings=HAILORT_10_MAPPINGS,
+            machines=("x86_64",),
+        ),
+        Artifact(
+            url=f"{HAILORT_10_RELEASE}/hailort_{HAILORT_10_VERSION}_arm64.deb",
+            sha256="db7065eecf3eef52279db8410cea367b9941c92a8f6bea88db09c27d7b4bc15d",
+            kind=ArtifactKind.archive,
+            mappings=HAILORT_10_MAPPINGS,
+            machines=("aarch64",),
+        ),
+        Artifact(
+            url=f"{HAILORT_10_RELEASE}/hailort-{HAILORT_10_VERSION}-cp311-cp311-linux_x86_64.whl",
+            sha256="0000000000000000000000000000000000000000000000000000000000000000",
+            kind=ArtifactKind.wheel,
+            machines=("x86_64",),
+        ),
+        Artifact(
+            url=f"{HAILORT_10_RELEASE}/hailort-{HAILORT_10_VERSION}-cp311-cp311-linux_aarch64.whl",
+            sha256="1ba71a8abcd18b0f7767369368444175b55cd7c1c32f65fc0e556c983ff5bca2",
+            kind=ArtifactKind.wheel,
+            machines=("aarch64",),
+        ),
+    ),
+    preload=(f"libhailort.so.{HAILORT_10_VERSION}", "libhailort.so"),
+    import_check="hailo_platform",
+)
+
 
 def detect_hailo_arch():
     try:
@@ -114,23 +160,26 @@ def detect_hailo_arch():
             [find_tool("hailortcli"), "fw-control", "identify"],
             capture_output=True,
             text=True,
+            timeout=5,
         )
-        if result.returncode != 0:
-            logger.error(f"Inference error: {result.stderr}")
-            return None
-        for line in result.stdout.split("\n"):
-            if "Device Architecture" in line:
-                if "HAILO10H" in line or "HAILO10" in line:
-                    return "hailo10h"
-                elif "HAILO8L" in line:
-                    return "hailo8l"
-                elif "HAILO8" in line:
-                    return "hailo8"
-        logger.error("Inference error: Could not determine Hailo architecture.")
-        return None
+        if result.returncode == 0:
+            for line in result.stdout.split("\n"):
+                if "Device Architecture" in line:
+                    if "HAILO10H" in line or "HAILO10" in line:
+                        return "hailo10h"
+                    elif "HAILO8L" in line:
+                        return "hailo8l"
+                    elif "HAILO8" in line:
+                        return "hailo8"
     except Exception as e:
-        logger.error(f"Inference error: {e}")
-        return None
+        logger.debug(f"Could not run hailortcli identify: {e}")
+
+    from glob import glob
+
+    if glob("/dev/h1x*"):
+        return "hailo10h"
+
+    return None
 
 
 # ----------------- HailoAsyncInference Class ----------------- #
@@ -267,6 +316,42 @@ class HailoAsyncInference:
 class HailoDetector(DetectionApi):
     type_key = DETECTOR_KEY
     runtime_manifest = HAILORT_MANIFEST
+
+    @classmethod
+    def is_hailo10(cls) -> bool:
+        from glob import glob
+
+        if glob("/dev/h1x*"):
+            return True
+        return detect_hailo_arch() == "hailo10h"
+
+    @classmethod
+    def get_runtime_manifest(cls) -> RuntimeManifest:
+        if cls.is_hailo10():
+            return HAILORT_10_MANIFEST
+        return HAILORT_MANIFEST
+
+    @classmethod
+    def ensure_dependencies(cls) -> None:
+        manifest = cls.get_runtime_manifest()
+        try:
+            ensure_installed(manifest)
+        except RuntimeDependencyError as e:
+            # If runtime files weren't pre-seeded or downloadable, check if hailo_platform is
+            # already installed in the system environment (e.g. pre-installed deb/wheel)
+            import importlib.util
+
+            if importlib.util.find_spec("hailo_platform") is not None:
+                logger.info(
+                    "HailoRT runtime dependency installation skipped; system hailo_platform is available."
+                )
+                return
+            raise
+
+    @classmethod
+    def activate_dependencies(cls) -> None:
+        manifest = cls.get_runtime_manifest()
+        activate(manifest)
 
     def __init__(self, detector_config: "HailoDetectorConfig"):
         global ARCH

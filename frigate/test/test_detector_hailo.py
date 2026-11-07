@@ -38,7 +38,7 @@ class TestHailoDetector(unittest.TestCase):
         mock_result = MagicMock(returncode=0, stdout=fake_output, stderr="")
         with patch("subprocess.run", return_value=mock_result), patch(
             "frigate.detectors.plugins.hailo.find_tool", return_value="hailortcli"
-        ):
+        ), patch("glob.glob", return_value=[]):
             arch = hailo.detect_hailo_arch()
             self.assertEqual(arch, "hailo8l")
 
@@ -47,7 +47,7 @@ class TestHailoDetector(unittest.TestCase):
         mock_result = MagicMock(returncode=0, stdout=fake_output, stderr="")
         with patch("subprocess.run", return_value=mock_result), patch(
             "frigate.detectors.plugins.hailo.find_tool", return_value="hailortcli"
-        ):
+        ), patch("glob.glob", return_value=[]):
             arch = hailo.detect_hailo_arch()
             self.assertEqual(arch, "hailo8")
 
@@ -55,9 +55,17 @@ class TestHailoDetector(unittest.TestCase):
         mock_result = MagicMock(returncode=1, stdout="", stderr="Device not found")
         with patch("subprocess.run", return_value=mock_result), patch(
             "frigate.detectors.plugins.hailo.find_tool", return_value="hailortcli"
-        ):
+        ), patch("glob.glob", return_value=[]):
             arch = hailo.detect_hailo_arch()
             self.assertIsNone(arch)
+
+    def test_detect_hailo_arch_glob_fallback(self):
+        mock_result = MagicMock(returncode=1, stdout="", stderr="Device not found")
+        with patch("subprocess.run", return_value=mock_result), patch(
+            "frigate.detectors.plugins.hailo.find_tool", return_value="hailortcli"
+        ), patch("glob.glob", return_value=["/dev/h1x-0"]):
+            arch = hailo.detect_hailo_arch()
+            self.assertEqual(arch, "hailo10h")
 
     def test_extract_model_name(self):
         with patch.object(hailo, "ARCH", "hailo10h"):
@@ -120,4 +128,32 @@ class TestHailoDetector(unittest.TestCase):
                 output_store=output_store,
             )
             self.assertEqual(fake_params.group_id, "SHARED")
+
+    def test_hailo10_selects_5_4_0_runtime(self):
+        with patch.object(hailo.HailoDetector, "is_hailo10", return_value=True):
+            self.assertEqual(
+                hailo.HailoDetector.get_runtime_manifest(), hailo.HAILORT_10_MANIFEST
+            )
+            self.assertEqual(hailo.HAILORT_10_MANIFEST.version, "5.4.0")
+            with patch("frigate.detectors.plugins.hailo.ensure_installed") as mock_ensure:
+                hailo.HailoDetector.ensure_dependencies()
+                mock_ensure.assert_called_once_with(hailo.HAILORT_10_MANIFEST)
+
+            with patch("frigate.detectors.plugins.hailo.activate") as mock_activate:
+                hailo.HailoDetector.activate_dependencies()
+                mock_activate.assert_called_once_with(hailo.HAILORT_10_MANIFEST)
+
+    def test_hailo8_selects_4_21_0_runtime(self):
+        with patch.object(hailo.HailoDetector, "is_hailo10", return_value=False):
+            self.assertEqual(
+                hailo.HailoDetector.get_runtime_manifest(), hailo.HAILORT_MANIFEST
+            )
+            self.assertEqual(hailo.HAILORT_MANIFEST.version, "4.21.0")
+            with patch("frigate.detectors.plugins.hailo.ensure_installed") as mock_ensure:
+                hailo.HailoDetector.ensure_dependencies()
+                mock_ensure.assert_called_once_with(hailo.HAILORT_MANIFEST)
+
+            with patch("frigate.detectors.plugins.hailo.activate") as mock_activate:
+                hailo.HailoDetector.activate_dependencies()
+                mock_activate.assert_called_once_with(hailo.HAILORT_MANIFEST)
 
