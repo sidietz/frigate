@@ -11,3 +11,8 @@ else
   echo "initializing config/config.yml" >&2
   cp -fv config/config.yml.example config/config.yml
 fi
+
+if [[ ! -f "frigate/version.py" ]]; then
+  echo "initializing frigate/version.py" >&2
+  make version
+fi

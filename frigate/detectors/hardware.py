@@ -253,7 +253,7 @@ def _dev_units(pattern: str, device: str, label: str) -> list[HardwareUnit]:
 
 def detect_hailo() -> DetectionHardware | None:
     """Find Hailo accelerators by their device nodes."""
-    nodes = sorted(glob(f"{DEV_ROOT}/hailo*"))
+    nodes = sorted(glob(f"{DEV_ROOT}/hailo*")) + sorted(glob(f"{DEV_ROOT}/h1x*"))
 
     if not nodes:
         return None

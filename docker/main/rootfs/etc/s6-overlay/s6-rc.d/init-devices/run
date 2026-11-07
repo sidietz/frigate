@@ -27,6 +27,7 @@ device_globs=(
     "/dev/accel/*"
     "/dev/apex_*"
     "/dev/hailo*"
+    "/dev/h1x*"
     "/dev/video*"
     "/dev/kfd"
     "/dev/rknpu*"
